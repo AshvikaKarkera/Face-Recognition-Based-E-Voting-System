@@ -127,6 +127,22 @@ To deploy:
 - Create a new app on Streamlit Cloud
 - Set `app.py` as the main file
 
+  ---
+
+## 📜 License
+
+This project is licensed under the **MIT License**.  
+See the [LICENSE](LICENSE) file for more details.
+
+---
+
+## 👨‍💻 Author
+
+**Ashvika Karkera**  
+📧 ashvikavk@gmail.com  
+🔗 [GitHub: @AshvikaKarkera](https://github.com/AshvikaKarkera)
+
+
 
 
 
