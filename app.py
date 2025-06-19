@@ -5,21 +5,22 @@ import pickle
 import os
 import csv
 import time
+import pandas as pd
 from datetime import datetime
 from fpdf import FPDF
 
-st.set_page_config(page_title="E-Voting System", layout="centered")
+st.set_page_config(page_title="Face Recognition E-Voting", layout="centered")
 st.title("Face Recognition-Based E-Voting System")
 
-# Ensure data folder exists
 if not os.path.exists('data/'):
     os.makedirs('data/')
 
 facedetect = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-menu = st.sidebar.selectbox("Select Mode", ["Register Yourself", "Cast Your Vote"])
 
-# Utility functions
+menu = st.sidebar.selectbox("Select Mode", ["Register Yourself", "Cast Your Vote", "Admin Panel"])
+
+
 def load_pickle(path, default):
     if os.path.exists(path):
         with open(path, 'rb') as f:
@@ -63,47 +64,51 @@ def generate_receipt(aadhar, vote, date, timestamp):
     pdf.output(file_path)
     return file_path
 
-# Registration Section
 if menu == "Register Yourself":
     st.subheader("Step 1: Face Registration")
 
     name = st.text_input("Enter your Aadhar number")
+    valid_aadhar = name.isdigit() and len(name) == 12
+    already_exists = already_registered(name) if valid_aadhar else False
 
-    if name:
-        if not name.isdigit() or len(name) != 12:
-            st.error("Aadhar number must be exactly 12 digits and numeric.")
-        elif already_registered(name):
-            st.warning("This Aadhar number is already registered.")
+    if name and not valid_aadhar:
+        st.error("Aadhar number must be exactly 12 digits and numeric.")
+    elif valid_aadhar and already_exists:
+        st.warning("This Aadhar number is already registered.")
 
     img = st.camera_input("Capture your face")
 
-    if img and name and name.isdigit() and len(name) == 12 and not already_registered(name):
-        file_bytes = np.asarray(bytearray(img.read()), dtype=np.uint8)
-        frame = cv2.imdecode(file_bytes, 1)
-
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = facedetect.detectMultiScale(gray, 1.3, 5)
-
-        if len(faces) == 0:
-            st.warning("No face detected. Please try again.")
+    if img:
+        if not valid_aadhar:
+            st.error("Cannot register. Invalid Aadhar number.")
+        elif already_exists:
+            st.warning("This Aadhar number is already registered.")
         else:
-            for (x, y, w, h) in faces:
-                crop_img = frame[y:y+h, x:x+w]
-                resized_img = cv2.resize(crop_img, (50, 50)).flatten()
+            file_bytes = np.asarray(bytearray(img.read()), dtype=np.uint8)
+            frame = cv2.imdecode(file_bytes, 1)
 
-                faces_data = load_pickle("data/faces_data.pkl", np.empty((0, 7500)))
-                names = load_pickle("data/names.pkl", [])
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = facedetect.detectMultiScale(gray, 1.3, 5)
 
-                faces_data = np.append(faces_data, [resized_img], axis=0)
-                names.append(name)
+            if len(faces) == 0:
+                st.warning("No face detected. Please try again.")
+            else:
+                for (x, y, w, h) in faces[:1]:  # Use only the first face
+                    crop_img = frame[y:y+h, x:x+w]
+                    resized_img = cv2.resize(crop_img, (50, 50)).flatten()
 
-                save_pickle("data/faces_data.pkl", faces_data)
-                save_pickle("data/names.pkl", names)
+                    faces_data = load_pickle("data/faces_data.pkl", np.empty((0, 7500)))
+                    names = load_pickle("data/names.pkl", [])
 
-                st.image(crop_img, channels="BGR")
-                st.success(f"Face registered for Aadhar: {name}")
+                    faces_data = np.append(faces_data, [resized_img], axis=0)
+                    names.append(name)
 
-# Voting Section
+                    save_pickle("data/faces_data.pkl", faces_data)
+                    save_pickle("data/names.pkl", names)
+
+                    st.image(crop_img, channels="BGR")
+                    st.success(f"Face registered for Aadhar: {name}")
+
 elif menu == "Cast Your Vote":
     st.subheader("Step 2: Cast Your Vote")
 
@@ -120,10 +125,9 @@ elif menu == "Cast Your Vote":
             st.error("No registered faces found. Please register first.")
         else:
             from sklearn.neighbors import KNeighborsClassifier
-            n_neighbors = min(5, len(names))  # dynamically adjust
+            n_neighbors = min(5, len(names))
             knn = KNeighborsClassifier(n_neighbors=n_neighbors)
             knn.fit(faces_data, names)
-
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             faces = facedetect.detectMultiScale(gray, 1.3, 5)
@@ -131,7 +135,7 @@ elif menu == "Cast Your Vote":
             if len(faces) == 0:
                 st.warning("No face detected.")
             else:
-                for (x, y, w, h) in faces:
+                for (x, y, w, h) in faces[:1]:
                     crop_img = frame[y:y+h, x:x+w]
                     resized_img = cv2.resize(crop_img, (50, 50)).flatten().reshape(1, -1)
                     output = knn.predict(resized_img)[0]
@@ -142,21 +146,45 @@ elif menu == "Cast Your Vote":
                         st.error("You have already voted.")
                         break
 
-                    vote = st.radio("Choose your party:", ["BJP", "CONGRESS", "APB", "NOTA"])
+                    vote = st.radio("Choose your party:", ["BJP", "CONGRESS", "APB", "NOTA"], key="vote_selection")
+
                     if st.button("Submit Vote"):
                         ts = time.time()
                         date = datetime.fromtimestamp(ts).strftime("%d-%m-%Y")
                         timestamp = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
-                        with open("data/Votes.csv", "a", newline="") as f:
-                            writer = csv.writer(f)
-                            if os.stat("data/Votes.csv").st_size == 0:
-                                writer.writerow(["NAME", "VOTE", "DATE", "TIME"])
-                            writer.writerow([output, vote, date, timestamp])
+                        csv_path = "data/Votes.csv"
 
-                        st.success("Thank you! Your vote has been recorded.")
+                        try:
+                            with open(csv_path, "a", newline="") as f:
+                                writer = csv.writer(f)
+                                if os.stat(csv_path).st_size == 0:
+                                    writer.writerow(["NAME", "VOTE", "DATE", "TIME"])
+                                writer.writerow([output, vote, date, timestamp])
+                            st.success("Thank you! Your vote has been recorded.")
+                        except Exception as e:
+                            st.error(f"Error writing to CSV: {e}")
+                            break
 
                         file_path = generate_receipt(output, vote, date, timestamp)
                         with open(file_path, "rb") as f:
                             st.download_button("Download Receipt", f, file_name="voting_receipt.pdf", mime="application/pdf")
 
-                        break
+                
+elif menu == "Admin Panel":
+    st.subheader("Admin Panel")
+
+    password = st.text_input("Enter admin password", type="password")
+
+    if password == "password1234":
+        st.success("Welcome to the admin panel!")
+
+        if os.path.exists("data/Votes.csv"):
+            df = pd.read_csv("data/Votes.csv")
+            st.dataframe(df)
+
+            with open("data/Votes.csv", "rb") as f:
+                st.download_button("Download Votes CSV", f, file_name="Votes.csv", mime="text/csv")
+        else:
+            st.info("No votes have been recorded yet.")
+    elif password:
+        st.error("Access Denied.")
