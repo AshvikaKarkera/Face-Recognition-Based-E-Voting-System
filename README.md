@@ -139,8 +139,8 @@ See the [LICENSE](LICENSE) file for more details.
 ## 👨‍💻 Author
 
 **Ashvika Karkera**  
-📧 ashvikavk@gmail.com  
-🔗 [GitHub: @AshvikaKarkera](https://github.com/AshvikaKarkera)
+Email: [ashvikavk@gmail.com](ashvikavk@gmail.com)  
+GitHub: [@AshvikaKarkera](https://github.com/AshvikaKarkera)
 
 
 
